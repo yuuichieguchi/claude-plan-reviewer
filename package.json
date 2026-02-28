@@ -1,6 +1,6 @@
 {
   "name": "claude-plan-reviewer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Auto-review Claude Code plans using external AI CLIs (Codex, Gemini CLI, etc.)",
   "type": "module",
   "bin": {
