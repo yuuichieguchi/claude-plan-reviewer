@@ -28,6 +28,8 @@ npm install -g claude-plan-reviewer
 claude-plan-reviewer setup
 ```
 
+> **Note:** The hook takes effect in Claude Code sessions started after setup. Already-running sessions are not affected.
+
 ## Teardown
 
 ```bash
