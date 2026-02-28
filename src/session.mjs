@@ -87,6 +87,7 @@ export function saveOriginalPlan(sessionId, planContent, sessionPath = SESSION_P
 
   sessions[sessionId] = {
     ...existing,
+    count: existing?.count ?? 0,
     lastReview: existing?.lastReview ?? Date.now(),
     originalPlan: planContent,
   };

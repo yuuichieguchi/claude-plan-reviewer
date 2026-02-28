@@ -222,6 +222,12 @@ describe('saveOriginalPlan', () => {
     const result = JSON.parse(readFileSync(noFile, 'utf-8'));
     assert.equal(result['new-sess'].originalPlan, 'brand new plan');
   });
+
+  it('incrementReviewCount returns 1 after saveOriginalPlan on fresh session', () => {
+    saveOriginalPlan('sess', 'plan', tempSessionPath);
+    const count = incrementReviewCount('sess', tempSessionPath);
+    assert.equal(count, 1);
+  });
 });
 
 // ============================================================
