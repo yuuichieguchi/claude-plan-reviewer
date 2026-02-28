@@ -1,0 +1,30 @@
+{
+  "name": "claude-plan-reviewer",
+  "version": "0.1.0",
+  "description": "Auto-review Claude Code plans using external AI CLIs (Codex, Gemini CLI, etc.)",
+  "type": "module",
+  "bin": {
+    "claude-plan-reviewer": "./bin/cli.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/"
+  ],
+  "scripts": {
+    "test": "node --test test/**/*.test.mjs"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "plan",
+    "review",
+    "codex",
+    "gemini",
+    "hook"
+  ],
+  "author": "Yuuichi Eguchi",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
