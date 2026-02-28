@@ -23,8 +23,9 @@ export function getHookCommand() {
 }
 
 /**
- * Registers the Stop hook in Claude's settings.json.
+ * Registers the PreToolUse hook (matcher: ExitPlanMode) in Claude's settings.json.
  * Creates the file if it does not exist. Preserves all existing settings and hooks.
+ * Also removes any leftover Stop hook entries from previous versions.
  */
 export function registerHook(settingsPath, hookCommand) {
   let settings = {};
@@ -42,26 +43,40 @@ export function registerHook(settingsPath, hookCommand) {
     settings.hooks = {};
   }
 
-  if (!Array.isArray(settings.hooks.Stop)) {
-    settings.hooks.Stop = [];
+  // --- Register under PreToolUse ---
+  if (!Array.isArray(settings.hooks.PreToolUse)) {
+    settings.hooks.PreToolUse = [];
   }
 
-  const existingIndex = settings.hooks.Stop.findIndex(isCprEntry);
+  const existingIndex = settings.hooks.PreToolUse.findIndex(isCprEntry);
 
-  const hookEntry = { hooks: [{ type: "command", command: hookCommand }] };
+  const hookEntry = {
+    matcher: "ExitPlanMode",
+    hooks: [{ type: "command", command: hookCommand }],
+  };
 
   if (existingIndex >= 0) {
-    settings.hooks.Stop[existingIndex] = hookEntry;
+    settings.hooks.PreToolUse[existingIndex] = hookEntry;
   } else {
-    settings.hooks.Stop.push(hookEntry);
+    settings.hooks.PreToolUse.push(hookEntry);
   }
 
-  // No mode specified — match Claude Code's own behavior for settings.json
+  // --- Clean up legacy Stop hook entries ---
+  if (Array.isArray(settings.hooks.Stop)) {
+    const filtered = settings.hooks.Stop.filter((entry) => !isCprEntry(entry));
+    if (filtered.length === 0) {
+      delete settings.hooks.Stop;
+    } else {
+      settings.hooks.Stop = filtered;
+    }
+  }
+
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
 }
 
 /**
  * Removes the claude-plan-reviewer hook entry from Claude's settings.json.
+ * Checks both PreToolUse and Stop (for legacy cleanup).
  * If the file does not exist, does nothing.
  */
 export function unregisterHook(settingsPath) {
@@ -73,23 +88,43 @@ export function unregisterHook(settingsPath) {
     throw err;
   }
 
-  if (!settings.hooks?.Stop) return;
+  if (!settings.hooks) return;
 
-  const original = settings.hooks.Stop;
-  const filtered = original.filter((entry) => !isCprEntry(entry));
+  let changed = false;
 
-  if (filtered.length === original.length) return;
-
-  if (filtered.length === 0) {
-    delete settings.hooks.Stop;
-  } else {
-    settings.hooks.Stop = filtered;
+  // Remove from PreToolUse
+  if (Array.isArray(settings.hooks.PreToolUse)) {
+    const original = settings.hooks.PreToolUse;
+    const filtered = original.filter((entry) => !isCprEntry(entry));
+    if (filtered.length !== original.length) {
+      changed = true;
+      if (filtered.length === 0) {
+        delete settings.hooks.PreToolUse;
+      } else {
+        settings.hooks.PreToolUse = filtered;
+      }
+    }
   }
+
+  // Remove from Stop (legacy cleanup)
+  if (Array.isArray(settings.hooks.Stop)) {
+    const original = settings.hooks.Stop;
+    const filtered = original.filter((entry) => !isCprEntry(entry));
+    if (filtered.length !== original.length) {
+      changed = true;
+      if (filtered.length === 0) {
+        delete settings.hooks.Stop;
+      } else {
+        settings.hooks.Stop = filtered;
+      }
+    }
+  }
+
+  if (!changed) return;
 
   if (Object.keys(settings.hooks).length === 0) {
     delete settings.hooks;
   }
 
-  // No mode specified — match Claude Code's own behavior for settings.json
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
 }

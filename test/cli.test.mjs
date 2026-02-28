@@ -134,7 +134,7 @@ describe("install", () => {
 
     const output = deps.stdoutChunks.join("");
     assert.ok(
-      output.includes("Stop hook installed successfully"),
+      output.includes("PreToolUse hook installed successfully"),
       `stdout should contain success message, got: ${output}`,
     );
     assert.ok(
@@ -184,7 +184,7 @@ describe("uninstall", () => {
 
     const output = deps.stdoutChunks.join("");
     assert.ok(
-      output.includes("Stop hook removed"),
+      output.includes("PreToolUse hook removed"),
       `stdout should contain success message, got: ${output}`,
     );
     assert.deepEqual(deps.exitCalls, [], "should not exit on success");
@@ -407,7 +407,7 @@ describe("hook", () => {
 
   it("hook with valid stdin calls processHook", async () => {
     let processHookArgs = null;
-    const hookInput = { session_id: "test-123", permission_mode: "plan" };
+    const hookInput = { session_id: "test-123", tool_name: "ExitPlanMode", hook_event_name: "PreToolUse" };
     const hookDeps = { some: "dep" };
     const deps = createDeps({
       stdin: JSON.stringify(hookInput),

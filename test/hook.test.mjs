@@ -3,17 +3,15 @@
  *
  * Coverage:
  * - processHook is an exported async function
- * - Returns silently when permission_mode is not "plan" (allows stop)
- * - Returns silently when permission_mode is missing
- * - Calls cleanStaleSessions on every invocation with plan mode
- * - Returns silently when review count >= maxReviews
- * - Returns silently when no plan file found
+ * - Calls cleanStaleSessions on every invocation
+ * - Returns silently when review count >= maxReviews (allows ExitPlanMode)
+ * - Returns silently when no plan file found (allows ExitPlanMode)
  * - Calls buildPrompt with plan content and config prompt
  * - Calls getAdapter with config.adapter name
  * - Calls adapter.review with built prompt and adapter options
  * - Increments review count after successful review
- * - Outputs {"decision":"block","reason":"..."} to stdout on success
- * - Returns silently on adapter error (allows stop)
+ * - Outputs hookSpecificOutput with deny decision to stdout on success
+ * - Returns silently on adapter error (allows ExitPlanMode)
  * - Writes error message to stderr on adapter error
  */
 
@@ -21,6 +19,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { processHook } from '../src/hook.mjs';
+
+const HOOK_INPUT = { session_id: 'abc-123', tool_name: 'ExitPlanMode', hook_event_name: 'PreToolUse' };
 
 /**
  * Creates a deps object with sensible defaults and optional overrides.
@@ -60,27 +60,13 @@ describe('processHook', () => {
     );
   });
 
-  it('produces no stdout when permission_mode is not "plan"', async () => {
-    const deps = createDeps();
-    await processHook({ session_id: 'abc-123', permission_mode: 'auto' }, deps);
-
-    assert.deepEqual(deps.stdoutChunks, []);
-  });
-
-  it('produces no stdout when permission_mode is missing', async () => {
-    const deps = createDeps();
-    await processHook({ session_id: 'abc-123' }, deps);
-
-    assert.deepEqual(deps.stdoutChunks, []);
-  });
-
-  it('calls cleanStaleSessions on every invocation with plan mode', async () => {
+  it('calls cleanStaleSessions on every invocation', async () => {
     let cleanCalled = false;
     const deps = createDeps({
       cleanStaleSessions: () => { cleanCalled = true; },
     });
 
-    await processHook({ session_id: 'abc-123', permission_mode: 'plan' }, deps);
+    await processHook(HOOK_INPUT, deps);
 
     assert.ok(cleanCalled, 'cleanStaleSessions should have been called');
   });
@@ -90,7 +76,7 @@ describe('processHook', () => {
       getReviewCount: () => 2,
     });
 
-    await processHook({ session_id: 'abc-123', permission_mode: 'plan' }, deps);
+    await processHook(HOOK_INPUT, deps);
 
     assert.deepEqual(deps.stdoutChunks, []);
   });
@@ -100,7 +86,7 @@ describe('processHook', () => {
       findLatestPlan: () => null,
     });
 
-    await processHook({ session_id: 'abc-123', permission_mode: 'plan' }, deps);
+    await processHook(HOOK_INPUT, deps);
 
     assert.deepEqual(deps.stdoutChunks, []);
   });
@@ -114,7 +100,7 @@ describe('processHook', () => {
       },
     });
 
-    await processHook({ session_id: 'abc-123', permission_mode: 'plan' }, deps);
+    await processHook(HOOK_INPUT, deps);
 
     assert.notEqual(buildPromptArgs, null, 'buildPrompt should have been called');
     assert.equal(buildPromptArgs.content, '# Plan\nDo stuff');
@@ -130,7 +116,7 @@ describe('processHook', () => {
       },
     });
 
-    await processHook({ session_id: 'abc-123', permission_mode: 'plan' }, deps);
+    await processHook(HOOK_INPUT, deps);
 
     assert.equal(getAdapterArg, 'codex');
   });
@@ -146,7 +132,7 @@ describe('processHook', () => {
       }),
     });
 
-    await processHook({ session_id: 'abc-123', permission_mode: 'plan' }, deps);
+    await processHook(HOOK_INPUT, deps);
 
     assert.notEqual(reviewArgs, null, 'adapter.review should have been called');
     assert.equal(reviewArgs.prompt, 'Review: # Plan\nDo stuff');
@@ -159,30 +145,35 @@ describe('processHook', () => {
       incrementReviewCount: (sessionId) => { incrementedSessionId = sessionId; return 1; },
     });
 
-    await processHook({ session_id: 'abc-123', permission_mode: 'plan' }, deps);
+    await processHook(HOOK_INPUT, deps);
 
     assert.equal(incrementedSessionId, 'abc-123');
   });
 
-  it('outputs {"decision":"block","reason":"..."} to stdout on success', async () => {
+  it('outputs hookSpecificOutput with deny decision to stdout on success', async () => {
     const deps = createDeps();
 
-    await processHook({ session_id: 'abc-123', permission_mode: 'plan' }, deps);
+    await processHook(HOOK_INPUT, deps);
 
     const output = deps.stdoutChunks.join('');
     const parsed = JSON.parse(output.trim());
-    assert.equal(parsed.decision, 'block');
-    assert.equal(parsed.reason, 'LGTM');
+    assert.deepEqual(parsed, {
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason: 'LGTM',
+      },
+    });
   });
 
-  it('produces no stdout on adapter error (allows stop)', async () => {
+  it('produces no stdout on adapter error (allows ExitPlanMode)', async () => {
     const deps = createDeps({
       getAdapter: () => ({
         review: async () => { throw new Error('API timeout'); },
       }),
     });
 
-    await processHook({ session_id: 'abc-123', permission_mode: 'plan' }, deps);
+    await processHook(HOOK_INPUT, deps);
 
     assert.deepEqual(deps.stdoutChunks, []);
   });
@@ -194,7 +185,7 @@ describe('processHook', () => {
       }),
     });
 
-    await processHook({ session_id: 'abc-123', permission_mode: 'plan' }, deps);
+    await processHook(HOOK_INPUT, deps);
 
     const stderrOutput = deps.stderrChunks.join('');
     assert.ok(

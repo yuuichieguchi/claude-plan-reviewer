@@ -13,7 +13,7 @@ VALID_NESTED_KEYS.gemini = new Set(["model"]);
 export async function main(args, deps) {
   if (args.includes("--help") || args.includes("-h")) {
     deps.stdout.write(
-      "Usage: claude-plan-reviewer <command>\n\nCommands:\n  install           Add Stop hook to Claude Code settings\n  uninstall         Remove Stop hook\n  config show       Show current configuration\n  config set <k> <v> Update a config value\n  review <file>     Manually review a plan file\n  hook              Internal: called by Claude Code Stop hook\n"
+      "Usage: claude-plan-reviewer <command>\n\nCommands:\n  install           Add PreToolUse hook to Claude Code settings\n  uninstall         Remove PreToolUse hook\n  config show       Show current configuration\n  config set <k> <v> Update a config value\n  review <file>     Manually review a plan file\n  hook              Internal: called by Claude Code PreToolUse hook\n"
     );
     return;
   }
@@ -29,7 +29,7 @@ export async function main(args, deps) {
     case "install": {
       try {
         deps.registerHook(deps.settingsPath, deps.getHookCommand());
-        deps.stdout.write("Stop hook installed successfully.\n");
+        deps.stdout.write("PreToolUse hook installed successfully.\n");
         deps.stdout.write(`Settings: ${deps.settingsPath}\n`);
       } catch (err) {
         deps.stderr.write(`Error: Failed to install hook: ${err.message}\n`);
@@ -41,7 +41,7 @@ export async function main(args, deps) {
     case "uninstall": {
       try {
         deps.unregisterHook(deps.settingsPath);
-        deps.stdout.write("Stop hook removed.\n");
+        deps.stdout.write("PreToolUse hook removed.\n");
       } catch (err) {
         deps.stderr.write(`Error: Failed to uninstall hook: ${err.message}\n`);
         deps.exit(1);
@@ -151,7 +151,7 @@ export async function main(args, deps) {
 
     default: {
       deps.stderr.write(
-        "Usage: claude-plan-reviewer <command>\n\nCommands:\n  install           Add Stop hook to Claude Code settings\n  uninstall         Remove Stop hook\n  config show       Show current configuration\n  config set <k> <v> Update a config value\n  review <file>     Manually review a plan file\n  hook              Internal: called by Claude Code Stop hook\n"
+        "Usage: claude-plan-reviewer <command>\n\nCommands:\n  install           Add PreToolUse hook to Claude Code settings\n  uninstall         Remove PreToolUse hook\n  config show       Show current configuration\n  config set <k> <v> Update a config value\n  review <file>     Manually review a plan file\n  hook              Internal: called by Claude Code PreToolUse hook\n"
       );
       deps.exit(1);
       break;
@@ -210,16 +210,6 @@ if (isMain) {
 
   const args = process.argv.slice(2);
 
-  // Diagnostic: record that the process was invoked (before stdin read)
-  if (args[0] === "hook") {
-    fs.writeFileSync("/tmp/cpr-hook-invoked.json", JSON.stringify({
-      timestamp: new Date().toISOString(),
-      pid: process.pid,
-      args: process.argv,
-      isTTY: process.stdin.isTTY,
-    }, null, 2));
-  }
-
   let stdinData = "";
   if (!process.stdin.isTTY) {
     const chunks = [];
@@ -227,15 +217,6 @@ if (isMain) {
       chunks.push(chunk);
     }
     stdinData = Buffer.concat(chunks).toString("utf-8");
-  }
-
-  // Diagnostic: record stdin read result
-  if (args[0] === "hook") {
-    fs.writeFileSync("/tmp/cpr-hook-stdin.json", JSON.stringify({
-      timestamp: new Date().toISOString(),
-      stdinLength: stdinData.length,
-      stdinPreview: stdinData.slice(0, 500),
-    }, null, 2));
   }
 
   const deps = {

@@ -3,8 +3,9 @@
  *
  * Coverage:
  * - getHookCommand returns correct command string
- * - registerHook creates, updates, and preserves settings.json
- * - unregisterHook removes claude-plan-reviewer entries correctly
+ * - registerHook creates, updates, and preserves settings.json (PreToolUse with matcher)
+ * - registerHook cleans up legacy Stop hook entries
+ * - unregisterHook removes claude-plan-reviewer entries from PreToolUse and Stop
  */
 
 import { describe, it, beforeEach, afterEach } from "node:test";
@@ -39,13 +40,11 @@ describe("getHookCommand", () => {
 
   it("should wrap the path in double quotes", () => {
     const cmd = getHookCommand();
-    // Pattern: node "...path..." hook
     assert.match(cmd, /^node ".*" hook$/, `Expected path wrapped in double quotes, got: ${cmd}`);
   });
 
   it("should contain an absolute path", () => {
     const cmd = getHookCommand();
-    // Extract path between quotes
     const match = cmd.match(/^node "(.*)" hook$/);
     assert.ok(match, `Expected 'node "..." hook' pattern, got: ${cmd}`);
     assert.ok(path.isAbsolute(match[1]), `Expected absolute path, got: ${match[1]}`);
@@ -86,7 +85,7 @@ describe("registerHook", () => {
     assert.ok(fs.existsSync(settingsPath), "settings.json should be created");
     const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
     assert.ok(settings.hooks, "settings should have hooks");
-    assert.ok(Array.isArray(settings.hooks.Stop), "settings.hooks.Stop should be an array");
+    assert.ok(Array.isArray(settings.hooks.PreToolUse), "settings.hooks.PreToolUse should be an array");
   });
 
   it("should preserve existing settings when adding hook", () => {
@@ -101,14 +100,14 @@ describe("registerHook", () => {
     const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
     assert.equal(settings.theme, "dark");
     assert.equal(settings.language, "en");
-    assert.ok(settings.hooks.Stop, "Stop hook should be added");
+    assert.ok(settings.hooks.PreToolUse, "PreToolUse hook should be added");
   });
 
-  it("should preserve other hooks when setting Stop", () => {
+  it("should preserve other hooks when setting PreToolUse", () => {
     const existingSettings = {
       hooks: {
-        PreToolUse: [{ hooks: [{ type: "command", command: "some-tool" }] }],
-        PermissionRequest: [{ hooks: [{ type: "command", command: "some-approver" }] }],
+        Stop: [{ hooks: [{ type: "command", command: "osascript -e 'say done'" }] }],
+        Notification: [{ hooks: [{ type: "command", command: "some-notifier" }] }],
       },
     };
     fs.writeFileSync(settingsPath, JSON.stringify(existingSettings, null, 2));
@@ -116,18 +115,19 @@ describe("registerHook", () => {
     registerHook(settingsPath, hookCommand);
 
     const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
-    assert.deepEqual(settings.hooks.PreToolUse, existingSettings.hooks.PreToolUse);
-    assert.deepEqual(settings.hooks.PermissionRequest, existingSettings.hooks.PermissionRequest);
-    assert.ok(Array.isArray(settings.hooks.Stop), "Stop should be added alongside existing hooks");
+    assert.deepEqual(settings.hooks.Stop, existingSettings.hooks.Stop);
+    assert.deepEqual(settings.hooks.Notification, existingSettings.hooks.Notification);
+    assert.ok(Array.isArray(settings.hooks.PreToolUse), "PreToolUse should be added alongside existing hooks");
   });
 
-  it("should set Stop to correct hook structure", () => {
+  it("should set PreToolUse to correct hook structure with matcher", () => {
     registerHook(settingsPath, hookCommand);
 
     const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
-    const stopEntries = settings.hooks.Stop;
-    assert.equal(stopEntries.length, 1);
-    assert.deepEqual(stopEntries[0], {
+    const entries = settings.hooks.PreToolUse;
+    assert.equal(entries.length, 1);
+    assert.deepEqual(entries[0], {
+      matcher: "ExitPlanMode",
       hooks: [{ type: "command", command: hookCommand }],
     });
   });
@@ -136,7 +136,7 @@ describe("registerHook", () => {
     const oldCommand = 'node "/old/path/claude-plan-reviewer/bin/cli.mjs" hook';
     const existingSettings = {
       hooks: {
-        Stop: [{ hooks: [{ type: "command", command: oldCommand }] }],
+        PreToolUse: [{ matcher: "ExitPlanMode", hooks: [{ type: "command", command: oldCommand }] }],
       },
     };
     fs.writeFileSync(settingsPath, JSON.stringify(existingSettings, null, 2));
@@ -144,18 +144,19 @@ describe("registerHook", () => {
     registerHook(settingsPath, hookCommand);
 
     const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
-    const stopEntries = settings.hooks.Stop;
-    assert.equal(stopEntries.length, 1, "Should update in place, not append");
-    assert.deepEqual(stopEntries[0], {
+    const entries = settings.hooks.PreToolUse;
+    assert.equal(entries.length, 1, "Should update in place, not append");
+    assert.deepEqual(entries[0], {
+      matcher: "ExitPlanMode",
       hooks: [{ type: "command", command: hookCommand }],
     });
   });
 
-  it("should preserve existing non-claude-plan-reviewer Stop hooks", () => {
-    const osascriptHook = { hooks: [{ type: "command", command: "osascript -e 'say done'" }] };
+  it("should preserve existing non-claude-plan-reviewer PreToolUse hooks", () => {
+    const bashHook = { matcher: "Bash", hooks: [{ type: "command", command: "lint-check" }] };
     const existingSettings = {
       hooks: {
-        Stop: [osascriptHook],
+        PreToolUse: [bashHook],
       },
     };
     fs.writeFileSync(settingsPath, JSON.stringify(existingSettings, null, 2));
@@ -163,20 +164,21 @@ describe("registerHook", () => {
     registerHook(settingsPath, hookCommand);
 
     const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
-    const stopEntries = settings.hooks.Stop;
-    assert.equal(stopEntries.length, 2, "Should have both hooks");
-    assert.deepEqual(stopEntries[0], osascriptHook, "osascript hook should be preserved");
-    assert.deepEqual(stopEntries[1], {
+    const entries = settings.hooks.PreToolUse;
+    assert.equal(entries.length, 2, "Should have both hooks");
+    assert.deepEqual(entries[0], bashHook, "Bash hook should be preserved");
+    assert.deepEqual(entries[1], {
+      matcher: "ExitPlanMode",
       hooks: [{ type: "command", command: hookCommand }],
     });
   });
 
-  it("should handle coexistence with existing Stop hooks", () => {
+  it("should clean up legacy Stop hook entries during install", () => {
     const osascriptHook = { hooks: [{ type: "command", command: "osascript -e 'say done'" }] };
-    const oldCprHook = { hooks: [{ type: "command", command: 'node "/old/claude-plan-reviewer/bin/cli.mjs" hook' }] };
+    const legacyCprHook = { hooks: [{ type: "command", command: 'node "/old/claude-plan-reviewer/bin/cli.mjs" hook' }] };
     const existingSettings = {
       hooks: {
-        Stop: [osascriptHook, oldCprHook],
+        Stop: [osascriptHook, legacyCprHook],
       },
     };
     fs.writeFileSync(settingsPath, JSON.stringify(existingSettings, null, 2));
@@ -184,12 +186,27 @@ describe("registerHook", () => {
     registerHook(settingsPath, hookCommand);
 
     const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
-    const stopEntries = settings.hooks.Stop;
-    assert.equal(stopEntries.length, 2, "Should still have exactly 2 hooks");
-    assert.deepEqual(stopEntries[0], osascriptHook, "osascript hook should remain at index 0");
-    assert.deepEqual(stopEntries[1], {
-      hooks: [{ type: "command", command: hookCommand }],
-    }, "claude-plan-reviewer hook should be updated at index 1");
+    // Stop should only have the osascript hook
+    assert.deepEqual(settings.hooks.Stop, [osascriptHook], "Legacy cpr entry should be removed from Stop");
+    // PreToolUse should have the new hook
+    assert.equal(settings.hooks.PreToolUse.length, 1);
+    assert.equal(settings.hooks.PreToolUse[0].matcher, "ExitPlanMode");
+  });
+
+  it("should delete Stop key when legacy cleanup leaves it empty", () => {
+    const legacyCprHook = { hooks: [{ type: "command", command: 'node "/old/claude-plan-reviewer/bin/cli.mjs" hook' }] };
+    const existingSettings = {
+      hooks: {
+        Stop: [legacyCprHook],
+      },
+    };
+    fs.writeFileSync(settingsPath, JSON.stringify(existingSettings, null, 2));
+
+    registerHook(settingsPath, hookCommand);
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    assert.ok(!("Stop" in settings.hooks), "Stop key should be deleted when empty");
+    assert.ok(Array.isArray(settings.hooks.PreToolUse), "PreToolUse should be added");
   });
 });
 
@@ -223,10 +240,10 @@ describe("unregisterHook", () => {
     assert.deepEqual(result, settings, "Settings should remain unchanged");
   });
 
-  it("should do nothing when settings has no Stop", () => {
+  it("should do nothing when settings has no PreToolUse or Stop", () => {
     const settings = {
       hooks: {
-        PreToolUse: [{ hooks: [{ type: "command", command: "some-tool" }] }],
+        Notification: [{ hooks: [{ type: "command", command: "some-tool" }] }],
       },
     };
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
@@ -237,12 +254,30 @@ describe("unregisterHook", () => {
     assert.deepEqual(result, settings, "Settings should remain unchanged");
   });
 
-  it("should remove only claude-plan-reviewer entries from Stop", () => {
+  it("should remove only claude-plan-reviewer entries from PreToolUse", () => {
+    const bashHook = { matcher: "Bash", hooks: [{ type: "command", command: "lint-check" }] };
+    const cprHook = { matcher: "ExitPlanMode", hooks: [{ type: "command", command: 'node "/path/to/claude-plan-reviewer/bin/cli.mjs" hook' }] };
+    const settings = {
+      hooks: {
+        PreToolUse: [bashHook, cprHook],
+      },
+    };
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+
+    unregisterHook(settingsPath);
+
+    const result = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    assert.deepEqual(result.hooks.PreToolUse, [bashHook], "Only Bash hook should remain");
+  });
+
+  it("should also remove legacy Stop hook entries", () => {
     const osascriptHook = { hooks: [{ type: "command", command: "osascript -e 'say done'" }] };
-    const cprHook = { hooks: [{ type: "command", command: 'node "/path/to/claude-plan-reviewer/bin/cli.mjs" hook' }] };
+    const legacyCprHook = { hooks: [{ type: "command", command: 'node "/path/to/claude-plan-reviewer/bin/cli.mjs" hook' }] };
+    const cprPreToolUse = { matcher: "ExitPlanMode", hooks: [{ type: "command", command: 'node "/path/to/claude-plan-reviewer/bin/cli.mjs" hook' }] };
     const settings = {
       hooks: {
-        Stop: [osascriptHook, cprHook],
+        PreToolUse: [cprPreToolUse],
+        Stop: [osascriptHook, legacyCprHook],
       },
     };
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
@@ -250,16 +285,16 @@ describe("unregisterHook", () => {
     unregisterHook(settingsPath);
 
     const result = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
-    assert.deepEqual(result.hooks.Stop, [osascriptHook], "Only osascript hook should remain");
+    assert.ok(!("PreToolUse" in result.hooks), "PreToolUse should be deleted when empty");
+    assert.deepEqual(result.hooks.Stop, [osascriptHook], "Only osascript hook should remain in Stop");
   });
 
-  it("should preserve other hook types when removing Stop entries", () => {
-    const preToolHook = [{ hooks: [{ type: "command", command: "lint-check" }] }];
-    const cprHook = { hooks: [{ type: "command", command: 'node "/path/to/claude-plan-reviewer/bin/cli.mjs" hook' }] };
+  it("should delete PreToolUse key when array becomes empty", () => {
+    const cprHook = { matcher: "ExitPlanMode", hooks: [{ type: "command", command: 'node "/path/to/claude-plan-reviewer/bin/cli.mjs" hook' }] };
     const settings = {
       hooks: {
-        PreToolUse: preToolHook,
-        Stop: [cprHook],
+        Notification: [{ hooks: [{ type: "command", command: "notifier" }] }],
+        PreToolUse: [cprHook],
       },
     };
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
@@ -267,33 +302,16 @@ describe("unregisterHook", () => {
     unregisterHook(settingsPath);
 
     const result = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
-    assert.deepEqual(result.hooks.PreToolUse, preToolHook, "PreToolUse should be preserved");
-    assert.equal(result.hooks.Stop, undefined, "Stop should be deleted when empty");
-  });
-
-  it("should delete Stop key when array becomes empty", () => {
-    const cprHook = { hooks: [{ type: "command", command: 'node "/path/to/claude-plan-reviewer/bin/cli.mjs" hook' }] };
-    const settings = {
-      hooks: {
-        PreToolUse: [{ hooks: [{ type: "command", command: "lint" }] }],
-        Stop: [cprHook],
-      },
-    };
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-
-    unregisterHook(settingsPath);
-
-    const result = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
-    assert.ok(!("Stop" in result.hooks), "Stop key should be deleted");
-    assert.ok("PreToolUse" in result.hooks, "PreToolUse should still exist");
+    assert.ok(!("PreToolUse" in result.hooks), "PreToolUse key should be deleted");
+    assert.ok("Notification" in result.hooks, "Notification should still exist");
   });
 
   it("should delete hooks key when it becomes empty", () => {
-    const cprHook = { hooks: [{ type: "command", command: 'node "/path/to/claude-plan-reviewer/bin/cli.mjs" hook' }] };
+    const cprHook = { matcher: "ExitPlanMode", hooks: [{ type: "command", command: 'node "/path/to/claude-plan-reviewer/bin/cli.mjs" hook' }] };
     const settings = {
       theme: "dark",
       hooks: {
-        Stop: [cprHook],
+        PreToolUse: [cprHook],
       },
     };
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
@@ -305,7 +323,7 @@ describe("unregisterHook", () => {
     assert.equal(result.theme, "dark", "Other settings should be preserved");
   });
 
-  it("should handle legacy flat format entries", () => {
+  it("should handle legacy flat format entries in Stop", () => {
     const legacyEntry = { command: 'node "/path/to/claude-plan-reviewer/bin/cli.mjs" hook' };
     const osascriptHook = { hooks: [{ type: "command", command: "osascript -e 'say done'" }] };
     const settings = {
