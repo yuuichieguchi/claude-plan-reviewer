@@ -210,6 +210,16 @@ if (isMain) {
 
   const args = process.argv.slice(2);
 
+  // Diagnostic: record that the process was invoked (before stdin read)
+  if (args[0] === "hook") {
+    fs.writeFileSync("/tmp/cpr-hook-invoked.json", JSON.stringify({
+      timestamp: new Date().toISOString(),
+      pid: process.pid,
+      args: process.argv,
+      isTTY: process.stdin.isTTY,
+    }, null, 2));
+  }
+
   let stdinData = "";
   if (!process.stdin.isTTY) {
     const chunks = [];
@@ -217,6 +227,15 @@ if (isMain) {
       chunks.push(chunk);
     }
     stdinData = Buffer.concat(chunks).toString("utf-8");
+  }
+
+  // Diagnostic: record stdin read result
+  if (args[0] === "hook") {
+    fs.writeFileSync("/tmp/cpr-hook-stdin.json", JSON.stringify({
+      timestamp: new Date().toISOString(),
+      stdinLength: stdinData.length,
+      stdinPreview: stdinData.slice(0, 500),
+    }, null, 2));
   }
 
   const deps = {
