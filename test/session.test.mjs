@@ -9,6 +9,8 @@ import {
   getReviewCount,
   incrementReviewCount,
   cleanStaleSessions,
+  saveOriginalPlan,
+  getOriginalPlan,
 } from '../src/session.mjs';
 
 describe('session', () => {
@@ -114,5 +116,169 @@ describe('session', () => {
       data['atomic-test'].lastReview > Date.now() - 5000,
       'lastReview should be recent (within 5 seconds)',
     );
+  });
+});
+
+// ============================================================
+// incrementReviewCount spread fix
+// ============================================================
+
+describe('incrementReviewCount preserves extra fields', () => {
+  let tempDir;
+  let tempSessionPath;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'session-spread-test-'));
+    tempSessionPath = join(tempDir, 'sessions.json');
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('should preserve originalPlan field after increment', () => {
+    // Arrange: manually write a session file with an extra field
+    const data = {
+      'sess-1': { count: 1, lastReview: 12345, originalPlan: 'my plan' },
+    };
+    writeFileSync(tempSessionPath, JSON.stringify(data));
+
+    // Act: increment the review count
+    const newCount = incrementReviewCount('sess-1', tempSessionPath);
+
+    // Assert: count is incremented
+    assert.equal(newCount, 2);
+
+    // Assert: originalPlan field is still present (not lost by overwrite)
+    const result = JSON.parse(readFileSync(tempSessionPath, 'utf-8'));
+    assert.equal(result['sess-1'].count, 2);
+    assert.equal(
+      result['sess-1'].originalPlan,
+      'my plan',
+      'originalPlan must be preserved after incrementReviewCount',
+    );
+  });
+});
+
+// ============================================================
+// saveOriginalPlan
+// ============================================================
+
+describe('saveOriginalPlan', () => {
+  let tempDir;
+  let tempSessionPath;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'session-save-plan-test-'));
+    tempSessionPath = join(tempDir, 'sessions.json');
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('should save plan content for a session', () => {
+    // Arrange
+    const sessionId = 'plan-sess-1';
+    const planContent = '## My Plan\n- Step 1\n- Step 2';
+
+    // Act
+    saveOriginalPlan(sessionId, planContent, tempSessionPath);
+
+    // Assert
+    const result = JSON.parse(readFileSync(tempSessionPath, 'utf-8'));
+    assert.equal(result[sessionId].originalPlan, planContent);
+  });
+
+  it('should NOT overwrite an existing originalPlan', () => {
+    // Arrange
+    const sessionId = 'plan-sess-2';
+    const firstPlan = 'First version of the plan';
+    const secondPlan = 'Second version of the plan';
+
+    // Act: save twice with different content
+    saveOriginalPlan(sessionId, firstPlan, tempSessionPath);
+    saveOriginalPlan(sessionId, secondPlan, tempSessionPath);
+
+    // Assert: the first plan content is kept
+    const result = JSON.parse(readFileSync(tempSessionPath, 'utf-8'));
+    assert.equal(
+      result[sessionId].originalPlan,
+      firstPlan,
+      'originalPlan must not be overwritten on second call',
+    );
+  });
+
+  it('should create session file when it does not exist yet', () => {
+    // Arrange: ensure file does not exist
+    const noFile = join(tempDir, 'nonexistent-sessions.json');
+    assert.equal(existsSync(noFile), false, 'file must not exist before test');
+
+    // Act
+    saveOriginalPlan('new-sess', 'brand new plan', noFile);
+
+    // Assert
+    assert.ok(existsSync(noFile), 'session file should be created');
+    const result = JSON.parse(readFileSync(noFile, 'utf-8'));
+    assert.equal(result['new-sess'].originalPlan, 'brand new plan');
+  });
+});
+
+// ============================================================
+// getOriginalPlan
+// ============================================================
+
+describe('getOriginalPlan', () => {
+  let tempDir;
+  let tempSessionPath;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'session-get-plan-test-'));
+    tempSessionPath = join(tempDir, 'sessions.json');
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('should return null when session does not exist', () => {
+    // Act: query a session that was never created (file doesn't exist)
+    const result = getOriginalPlan('nonexistent-session', tempSessionPath);
+
+    // Assert
+    assert.equal(result, null);
+  });
+
+  it('should return null when session exists but has no originalPlan', () => {
+    // Arrange: session exists with count/lastReview but no originalPlan
+    const data = {
+      'sess-no-plan': { count: 3, lastReview: Date.now() },
+    };
+    writeFileSync(tempSessionPath, JSON.stringify(data));
+
+    // Act
+    const result = getOriginalPlan('sess-no-plan', tempSessionPath);
+
+    // Assert
+    assert.equal(result, null);
+  });
+
+  it('should return the saved plan content', () => {
+    // Arrange: session has originalPlan
+    const planContent = '## Detailed Plan\n1. Do this\n2. Do that';
+    const data = {
+      'sess-with-plan': {
+        count: 1,
+        lastReview: Date.now(),
+        originalPlan: planContent,
+      },
+    };
+    writeFileSync(tempSessionPath, JSON.stringify(data));
+
+    // Act
+    const result = getOriginalPlan('sess-with-plan', tempSessionPath);
+
+    // Assert
+    assert.equal(result, planContent);
   });
 });

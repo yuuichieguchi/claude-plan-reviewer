@@ -205,7 +205,10 @@ if (isMain) {
     getReviewCount,
     incrementReviewCount,
     cleanStaleSessions,
+    saveOriginalPlan,
+    getOriginalPlan,
   } = await import("../src/session.mjs");
+  const { computeDiff } = await import("../src/diff.mjs");
   const { findLatestPlan } = await import("../src/plan.mjs");
 
   const args = process.argv.slice(2);
@@ -239,6 +242,9 @@ if (isMain) {
       getReviewCount,
       incrementReviewCount,
       cleanStaleSessions,
+      saveOriginalPlan,
+      getOriginalPlan,
+      computeDiff,
       findLatestPlan,
       buildPrompt,
       getAdapter,

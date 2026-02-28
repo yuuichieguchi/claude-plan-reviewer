@@ -19,6 +19,13 @@
  * - Streams review chunks to stderr via onData
  * - Does not write review header when maxReviews reached
  * - Does not write review header when no plan found
+ * - Displays current plan content to stderr
+ * - Does not display current plan when no plan found
+ * - Calls saveOriginalPlan on first review (count === 0)
+ * - Does not call saveOriginalPlan when count > 0
+ * - Displays diff when maxReviews reached and plan exists
+ * - Does not display diff when maxReviews reached but no original plan saved
+ * - findLatestPlan is called before maxReviews check
  */
 
 import { describe, it } from 'node:test';
@@ -48,6 +55,9 @@ function createDeps(overrides = {}) {
     findLatestPlan: () => ({ path: '/tmp/plan.md', content: '# Plan\nDo stuff' }),
     buildPrompt: (content, custom) => `Review: ${content}`,
     getAdapter: () => ({ review: async (prompt, options, deps) => 'LGTM' }),
+    saveOriginalPlan: () => {},
+    getOriginalPlan: () => null,
+    computeDiff: () => '',
     stdout: { write: (data) => stdoutChunks.push(data) },
     stderr: { write: (data) => stderrChunks.push(data) },
     stdoutChunks,
@@ -326,6 +336,126 @@ describe('processHook', () => {
     assert.ok(
       !stderrOutput.includes('━━━ Claude Plan Reviewer ━━━'),
       `stderr should NOT contain review header when no plan found, got: ${stderrOutput}`,
+    );
+  });
+
+  // ==================== Plan display & diff ====================
+
+  it('displays current plan content to stderr', async () => {
+    const deps = createDeps();
+
+    await processHook(HOOK_INPUT, deps);
+
+    const stderrOutput = deps.stderrChunks.join('');
+    assert.ok(
+      stderrOutput.includes('━━━ Current Plan ━━━'),
+      `stderr should contain current plan header, got: ${stderrOutput}`,
+    );
+    assert.ok(
+      stderrOutput.includes('# Plan\nDo stuff'),
+      `stderr should contain the plan content, got: ${stderrOutput}`,
+    );
+  });
+
+  it('calls saveOriginalPlan on first review (count === 0)', async () => {
+    let saveArgs = null;
+    const deps = createDeps({
+      getReviewCount: () => 0,
+      saveOriginalPlan: (sessionId, content) => { saveArgs = { sessionId, content }; },
+    });
+
+    await processHook(HOOK_INPUT, deps);
+
+    assert.notEqual(saveArgs, null, 'saveOriginalPlan should have been called');
+    assert.equal(saveArgs.sessionId, 'abc-123');
+    assert.equal(saveArgs.content, '# Plan\nDo stuff');
+  });
+
+  it('displays diff when maxReviews reached and plan exists', async () => {
+    const deps = createDeps({
+      getReviewCount: () => 2,
+      findLatestPlan: () => ({ path: '/tmp/plan.md', content: '# Plan\nDo stuff v2' }),
+      getOriginalPlan: () => '# Plan\nDo stuff',
+      computeDiff: () => '- Do stuff\n+ Do stuff v2',
+    });
+
+    await processHook(HOOK_INPUT, deps);
+
+    const stderrOutput = deps.stderrChunks.join('');
+    assert.ok(
+      stderrOutput.includes('━━━ Plan Evolution (Original → Final) ━━━'),
+      `stderr should contain plan evolution header, got: ${stderrOutput}`,
+    );
+    assert.ok(
+      stderrOutput.includes('- Do stuff\n+ Do stuff v2'),
+      `stderr should contain the diff output, got: ${stderrOutput}`,
+    );
+  });
+
+  it('does not display current plan when no plan found', async () => {
+    const deps = createDeps({
+      findLatestPlan: () => null,
+    });
+
+    await processHook(HOOK_INPUT, deps);
+
+    const stderrOutput = deps.stderrChunks.join('');
+    assert.ok(
+      !stderrOutput.includes('━━━ Current Plan ━━━'),
+      `stderr should NOT contain current plan header when no plan found, got: ${stderrOutput}`,
+    );
+  });
+
+  it('does not call saveOriginalPlan when count > 0', async () => {
+    let saveCalled = false;
+    const deps = createDeps({
+      getReviewCount: () => 1,
+      saveOriginalPlan: () => { saveCalled = true; },
+    });
+
+    await processHook(HOOK_INPUT, deps);
+
+    assert.ok(!saveCalled, 'saveOriginalPlan should NOT have been called when count > 0');
+  });
+
+  it('does not display diff when maxReviews reached but no original plan saved', async () => {
+    const deps = createDeps({
+      getReviewCount: () => 2,
+      findLatestPlan: () => ({ path: '/tmp/plan.md', content: '# Plan\nDo stuff v2' }),
+      getOriginalPlan: () => null,
+    });
+
+    await processHook(HOOK_INPUT, deps);
+
+    const stderrOutput = deps.stderrChunks.join('');
+    assert.ok(
+      !stderrOutput.includes('━━━ Plan Evolution'),
+      `stderr should NOT contain plan evolution header when no original plan saved, got: ${stderrOutput}`,
+    );
+  });
+
+  it('findLatestPlan is called before maxReviews check', async () => {
+    const callOrder = [];
+    const deps = createDeps({
+      findLatestPlan: () => {
+        callOrder.push('findLatestPlan');
+        return { path: '/tmp/plan.md', content: '# Plan\nDo stuff' };
+      },
+      getReviewCount: () => {
+        callOrder.push('getReviewCount');
+        return 0;
+      },
+    });
+
+    await processHook(HOOK_INPUT, deps);
+
+    const findIdx = callOrder.indexOf('findLatestPlan');
+    const countIdx = callOrder.indexOf('getReviewCount');
+    assert.ok(findIdx !== -1, 'findLatestPlan should have been called');
+    assert.ok(countIdx !== -1, 'getReviewCount should have been called');
+    assert.ok(
+      findIdx < countIdx,
+      `findLatestPlan (index ${findIdx}) should be called before getReviewCount (index ${countIdx}), call order: ${callOrder.join(', ')}`,
     );
   });
 });

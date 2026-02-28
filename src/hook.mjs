@@ -20,15 +20,7 @@ export async function processHook(input, deps) {
     // 2. Load config
     const config = deps.loadConfig();
 
-    // 3. Check review count against maxReviews
-    const count = deps.getReviewCount(input.session_id);
-    deps.stderr.write(`[cpr] session=${input.session_id} count=${count}/${config.maxReviews}\n`);
-    if (count >= config.maxReviews) {
-      deps.stderr.write(`[cpr] maxReviews reached, allowing ExitPlanMode\n`);
-      return;
-    }
-
-    // 4. Find latest plan file
+    // 3. Find latest plan file (before maxReviews check)
     const plan = deps.findLatestPlan();
     deps.stderr.write(`[cpr] plan=${plan ? plan.path : 'null'}\n`);
     if (plan === null) {
@@ -36,7 +28,32 @@ export async function processHook(input, deps) {
       return;
     }
 
-    // 5. Build prompt and run review
+    // 4. Display current plan to stderr
+    deps.stderr.write(`\n\x1b[1;33m━━━ Current Plan ━━━\x1b[0m\n\n`);
+    deps.stderr.write(plan.content + '\n');
+
+    // 5. Check review count against maxReviews
+    const count = deps.getReviewCount(input.session_id);
+    deps.stderr.write(`[cpr] session=${input.session_id} count=${count}/${config.maxReviews}\n`);
+    if (count >= config.maxReviews) {
+      const originalPlan = deps.getOriginalPlan(input.session_id);
+      if (originalPlan !== null) {
+        const diff = deps.computeDiff(originalPlan, plan.content);
+        if (diff) {
+          deps.stderr.write(`\n\x1b[1;35m━━━ Plan Evolution (Original → Final) ━━━\x1b[0m\n\n`);
+          deps.stderr.write(diff + '\n');
+        }
+      }
+      deps.stderr.write(`[cpr] maxReviews reached, allowing ExitPlanMode\n`);
+      return;
+    }
+
+    // 6. Save original plan on first review
+    if (count === 0) {
+      deps.saveOriginalPlan(input.session_id, plan.content);
+    }
+
+    // 7. Build prompt and run review
     const prompt = deps.buildPrompt(plan.content, config.prompt);
     const adapter = deps.getAdapter(config.adapter);
     deps.stderr.write(`[cpr] reviewing with ${config.adapter}...\n`);
@@ -47,10 +64,10 @@ export async function processHook(input, deps) {
 
     deps.stderr.write(`\n\x1b[1;36m━━━ Review complete ━━━\x1b[0m\n\n`);
 
-    // 6. Increment review count
+    // 8. Increment review count
     deps.incrementReviewCount(input.session_id);
 
-    // 7. Output deny decision to stdout (blocks ExitPlanMode)
+    // 9. Output deny decision to stdout (blocks ExitPlanMode)
     const output = JSON.stringify({
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
