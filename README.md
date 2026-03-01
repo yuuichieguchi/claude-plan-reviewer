@@ -1,20 +1,21 @@
 # claude-plan-reviewer
 
-Automatically review Claude Code plans using external AI CLIs (Codex, Gemini CLI). Uses Claude Code's `Stop` hook mechanism to intercept plan completion, send the plan for external review, and inject feedback back into Claude's context.
+Automatically review Claude Code plans using external AI CLIs (Codex, Gemini CLI). Uses Claude Code's `PreToolUse` hook to intercept `ExitPlanMode`, send the plan for external review, and inject feedback back into Claude's context.
 
 ## How It Works
 
 ```
-Claude writes a plan and attempts to stop
-  → Stop hook fires → hook runs
-  → Checks permission_mode === "plan"
+Claude writes a plan and calls ExitPlanMode
+  → PreToolUse hook fires → hook runs
   → Finds the latest plan file from ~/.claude/plans/
   → Runs review via Codex / Gemini CLI
-  → Outputs review to stderr + exit 2
-  → Claude is blocked from stopping and receives the review
-  → Claude revises the plan → attempts to stop again
-  → After maxReviews reached → exit 0 → Claude stops
+  → If LGTM → permissionDecision:"allow" → Claude exits plan mode
+  → If not  → permissionDecision:"deny" + review feedback
+            → Claude revises the plan → calls ExitPlanMode again
+  → After maxReviews reached → allow without review
 ```
+
+> **Note:** Due to a Claude Code limitation, the review result is only displayed in the chat when the reviewer returns feedback (deny). When the reviewer returns LGTM (allow), the review result is streamed to stderr but not shown in the chat UI.
 
 ## Install
 
