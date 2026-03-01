@@ -26,6 +26,11 @@
  * - Displays diff when maxReviews reached and plan exists
  * - Does not display diff when maxReviews reached but no original plan saved
  * - findLatestPlan is called before maxReviews check
+ * - Produces no stdout when review result is LGTM
+ * - Does not increment review count when review result is LGTM
+ * - Produces no stdout when review result starts with LGTM followed by explanation
+ * - Produces no stdout when review result is lowercase lgtm
+ * - Outputs deny decision when review result does not start with LGTM
  */
 
 import { describe, it } from 'node:test';
@@ -54,7 +59,7 @@ function createDeps(overrides = {}) {
     cleanStaleSessions: () => {},
     findLatestPlan: () => ({ path: '/tmp/plan.md', content: '# Plan\nDo stuff' }),
     buildPrompt: (content, custom) => `Review: ${content}`,
-    getAdapter: () => ({ review: async (prompt, options, deps) => 'LGTM' }),
+    getAdapter: () => ({ review: async (prompt, options, deps) => '1. Fix error handling\n2. Add tests' }),
     saveOriginalPlan: () => {},
     getOriginalPlan: () => null,
     computeDiff: () => '',
@@ -174,7 +179,7 @@ describe('processHook', () => {
     const output = deps.stdoutChunks.join('');
     const parsed = JSON.parse(output.trim());
     const expectedReason =
-      'ExitPlanMode was blocked by claude-plan-reviewer. Revise your plan based on the following review feedback, then call ExitPlanMode again.\n\nLGTM';
+      'ExitPlanMode was blocked by claude-plan-reviewer. Revise your plan based on the following review feedback, then call ExitPlanMode again.\n\n1. Fix error handling\n2. Add tests';
     assert.deepEqual(parsed, {
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
@@ -457,5 +462,61 @@ describe('processHook', () => {
       findIdx < countIdx,
       `findLatestPlan (index ${findIdx}) should be called before getReviewCount (index ${countIdx}), call order: ${callOrder.join(', ')}`,
     );
+  });
+
+  // ==================== LGTM handling ====================
+
+  it('produces no stdout when review result is LGTM', async () => {
+    const deps = createDeps({
+      getAdapter: () => ({ review: async () => 'LGTM' }),
+    });
+
+    await processHook(HOOK_INPUT, deps);
+
+    assert.deepEqual(deps.stdoutChunks, [], 'stdout should be empty when review is LGTM');
+  });
+
+  it('does not increment review count when review result is LGTM', async () => {
+    let incrementCalled = false;
+    const deps = createDeps({
+      getAdapter: () => ({ review: async () => 'LGTM' }),
+      incrementReviewCount: () => { incrementCalled = true; },
+    });
+
+    await processHook(HOOK_INPUT, deps);
+
+    assert.ok(!incrementCalled, 'incrementReviewCount should not be called when review is LGTM');
+  });
+
+  it('produces no stdout when review result starts with LGTM followed by explanation', async () => {
+    const deps = createDeps({
+      getAdapter: () => ({ review: async () => 'LGTM, looks good.' }),
+    });
+
+    await processHook(HOOK_INPUT, deps);
+
+    assert.deepEqual(deps.stdoutChunks, [], 'stdout should be empty when review starts with LGTM');
+  });
+
+  it('produces no stdout when review result is lowercase lgtm', async () => {
+    const deps = createDeps({
+      getAdapter: () => ({ review: async () => 'lgtm' }),
+    });
+
+    await processHook(HOOK_INPUT, deps);
+
+    assert.deepEqual(deps.stdoutChunks, [], 'stdout should be empty when review is lowercase lgtm');
+  });
+
+  it('outputs deny decision when review result does not start with LGTM', async () => {
+    const deps = createDeps({
+      getAdapter: () => ({ review: async () => '1. Fix error handling in step 3.' }),
+    });
+
+    await processHook(HOOK_INPUT, deps);
+
+    const output = deps.stdoutChunks.join('');
+    const parsed = JSON.parse(output.trim());
+    assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
   });
 });

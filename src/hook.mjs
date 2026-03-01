@@ -64,6 +64,12 @@ export async function processHook(input, deps) {
 
     deps.stderr.write(`\n\x1b[1;36m━━━ Review complete ━━━\x1b[0m\n\n`);
 
+    // 7.5. If review is LGTM, allow ExitPlanMode immediately
+    if (result.trim().toLowerCase().startsWith("lgtm")) {
+      deps.stderr.write(`[cpr] reviewer returned LGTM, allowing ExitPlanMode\n`);
+      return;
+    }
+
     // 8. Increment review count
     deps.incrementReviewCount(input.session_id);
 
