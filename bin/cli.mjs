@@ -7,7 +7,7 @@ import os from "node:os";
 
 const VALID_TOP_LEVEL_KEYS = new Set(["adapter", "maxReviews", "prompt"]);
 const VALID_NESTED_KEYS = Object.create(null);
-VALID_NESTED_KEYS.codex = new Set(["model", "sandbox"]);
+VALID_NESTED_KEYS.codex = new Set(["model", "sandbox", "timeout"]);
 VALID_NESTED_KEYS.gemini = new Set(["model"]);
 
 export async function main(args, deps) {

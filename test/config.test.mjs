@@ -71,6 +71,7 @@ describe("DEFAULT_CONFIG", () => {
     assert.ok(DEFAULT_CONFIG.codex !== null, "codex should not be null");
     assert.equal(DEFAULT_CONFIG.codex.model, "");
     assert.equal(DEFAULT_CONFIG.codex.sandbox, "read-only");
+    assert.equal(DEFAULT_CONFIG.codex.timeout, 120000);
   });
 
   it("should have gemini as object with model", () => {
@@ -110,6 +111,7 @@ describe("loadConfig", () => {
       codex: {
         model: "",
         sandbox: "read-only",
+        timeout: 120000,
       },
       gemini: {
         model: "",
@@ -129,7 +131,7 @@ describe("loadConfig", () => {
 
     // Default values preserved
     assert.equal(config.maxReviews, 2);
-    assert.deepEqual(config.codex, { model: "", sandbox: "read-only" });
+    assert.deepEqual(config.codex, { model: "", sandbox: "read-only", timeout: 120000 });
     assert.deepEqual(config.gemini, { model: "" });
   });
 
@@ -143,6 +145,7 @@ describe("loadConfig", () => {
     assert.equal(config.codex.model, "o3");
     // Default sub-field preserved
     assert.equal(config.codex.sandbox, "read-only");
+    assert.equal(config.codex.timeout, 120000);
   });
 
   it("should deep-merge gemini sub-object with defaults", () => {
@@ -162,6 +165,7 @@ describe("loadConfig", () => {
       codex: {
         model: "o3",
         sandbox: "network",
+        timeout: 300000,
       },
       gemini: {
         model: "gemini-2.5-pro",
@@ -212,17 +216,31 @@ describe("loadConfig", () => {
   });
 
   it("should fall back to default codex.model when codex.model is not a string", () => {
-    fs.writeFileSync(tmpConfigPath, JSON.stringify({ codex: { model: 123, sandbox: "network" } }));
+    fs.writeFileSync(tmpConfigPath, JSON.stringify({ codex: { model: 123, sandbox: "network", timeout: 300000 } }));
     const config = loadConfig(tmpConfigPath);
     assert.equal(config.codex.model, DEFAULT_CONFIG.codex.model);
     assert.equal(config.codex.sandbox, "network");
+    assert.equal(config.codex.timeout, 300000);
   });
 
   it("should fall back to default codex.sandbox when codex.sandbox is not a string", () => {
-    fs.writeFileSync(tmpConfigPath, JSON.stringify({ codex: { model: "o3", sandbox: false } }));
+    fs.writeFileSync(tmpConfigPath, JSON.stringify({ codex: { model: "o3", sandbox: false, timeout: 300000 } }));
     const config = loadConfig(tmpConfigPath);
     assert.equal(config.codex.model, "o3");
     assert.equal(config.codex.sandbox, DEFAULT_CONFIG.codex.sandbox);
+    assert.equal(config.codex.timeout, 300000);
+  });
+
+  it("should fall back to default codex.timeout when codex.timeout is not a positive integer", () => {
+    fs.writeFileSync(tmpConfigPath, JSON.stringify({ codex: { model: "o3", sandbox: "network", timeout: "slow" } }));
+    let config = loadConfig(tmpConfigPath);
+    assert.equal(config.codex.model, "o3");
+    assert.equal(config.codex.sandbox, "network");
+    assert.equal(config.codex.timeout, DEFAULT_CONFIG.codex.timeout);
+
+    fs.writeFileSync(tmpConfigPath, JSON.stringify({ codex: { timeout: 0 } }));
+    config = loadConfig(tmpConfigPath);
+    assert.equal(config.codex.timeout, DEFAULT_CONFIG.codex.timeout);
   });
 
   it("should fall back to default gemini when gemini is not an object", () => {
@@ -262,7 +280,7 @@ describe("saveConfig", () => {
       adapter: "codex",
       maxReviews: 3,
       prompt: "save-test",
-      codex: { model: "", sandbox: "read-only" },
+      codex: { model: "", sandbox: "read-only", timeout: 120000 },
       gemini: { model: "" },
     };
 
@@ -289,6 +307,16 @@ describe("saveConfig", () => {
 
     const stat = fs.statSync(tmpConfigPath);
     const mode = stat.mode & 0o777;
+
+    if (process.platform === "win32") {
+      assert.equal(
+        mode,
+        0o666,
+        `Windows does not enforce POSIX 0o600 modes, got 0o${mode.toString(8)}`
+      );
+      return;
+    }
+
     assert.equal(
       mode,
       0o600,
@@ -304,6 +332,7 @@ describe("saveConfig", () => {
       codex: {
         model: "o3",
         sandbox: "network",
+        timeout: 300000,
       },
       gemini: {
         model: "gemini-2.5-pro",

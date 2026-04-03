@@ -52,7 +52,7 @@ function createDeps(overrides = {}) {
       adapter: 'codex',
       maxReviews: 2,
       prompt: '',
-      codex: { model: '', sandbox: 'read-only' },
+      codex: { model: '', sandbox: 'read-only', timeout: 120000 },
     }),
     getReviewCount: () => 0,
     incrementReviewCount: () => 1,
@@ -158,7 +158,7 @@ describe('processHook', () => {
 
     assert.notEqual(reviewArgs, null, 'adapter.review should have been called');
     assert.equal(reviewArgs.prompt, 'Review: # Plan\nDo stuff');
-    assert.deepEqual(reviewArgs.options, { model: '', sandbox: 'read-only' });
+    assert.deepEqual(reviewArgs.options, { model: '', sandbox: 'read-only', timeout: 120000 });
   });
 
   it('increments review count after successful review', async () => {
