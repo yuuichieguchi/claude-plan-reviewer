@@ -42,6 +42,7 @@ function createDeps(overrides = {}) {
       adapter: "codex",
       maxReviews: 2,
       prompt: "",
+      useProjectContext: false,
       projectPath: "",
       codex: { model: "", sandbox: "read-only", timeout: 120000 },
       gemini: { model: "" },
@@ -237,6 +238,7 @@ describe("config show", () => {
     assert.equal(parsed.adapter, "codex");
     assert.equal(parsed.maxReviews, 2);
     assert.equal(parsed.prompt, "");
+    assert.equal(parsed.useProjectContext, false);
     assert.equal(parsed.projectPath, "");
     assert.deepEqual(parsed.codex, { model: "", sandbox: "read-only", timeout: 120000 });
     assert.deepEqual(parsed.gemini, { model: "" });
@@ -274,6 +276,20 @@ describe("config set", () => {
     assert.notEqual(savedConfig, null, "saveConfig should have been called");
     assert.equal(savedConfig.maxReviews, 5);
     assert.equal(typeof savedConfig.maxReviews, "number");
+  });
+
+  it("config set useProjectContext true updates the top-level toggle", async () => {
+    let savedConfig = null;
+    const deps = createDeps({
+      saveConfig: (config) => {
+        savedConfig = config;
+      },
+    });
+
+    await main(["config", "set", "useProjectContext", "true"], deps);
+
+    assert.notEqual(savedConfig, null, "saveConfig should have been called");
+    assert.equal(savedConfig.useProjectContext, true);
   });
 
   it("config set projectPath /repo updates the top-level project path", async () => {
@@ -423,7 +439,7 @@ describe("review", () => {
     assert.deepEqual(deps.exitCalls, [1]);
   });
 
-  it("passes the resolved project path into buildPrompt and adapter.review", async () => {
+  it("uses the legacy review flow by default", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cpr-review-"));
     const planPath = path.join(tmpDir, "plan.md");
     fs.writeFileSync(planPath, "# Plan\nDo stuff");
@@ -452,7 +468,7 @@ describe("review", () => {
     assert.deepEqual(buildPromptArgs, {
       content: "# Plan\nDo stuff",
       custom: "",
-      context: { projectPath: "/tmp/project" },
+      context: undefined,
     });
     assert.deepEqual(reviewArgs, {
       prompt: "Review prompt",
@@ -460,26 +476,31 @@ describe("review", () => {
         model: "",
         sandbox: "read-only",
         timeout: 120000,
-        projectPath: "/tmp/project",
       },
     });
   });
 
-  it("uses config.projectPath instead of cwd when it is set", async () => {
+  it("passes project context when the feature is enabled", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cpr-review-"));
     const planPath = path.join(tmpDir, "plan.md");
     fs.writeFileSync(planPath, "# Plan\nDo stuff");
 
+    let buildPromptArgs = null;
     let reviewArgs = null;
     const deps = createDeps({
       loadConfig: () => ({
         adapter: "codex",
         maxReviews: 2,
         prompt: "",
+        useProjectContext: true,
         projectPath: "/configured/repo",
         codex: { model: "", sandbox: "read-only", timeout: 120000 },
         gemini: { model: "" },
       }),
+      buildPrompt: (content, custom, context) => {
+        buildPromptArgs = { content, custom, context };
+        return "Review prompt";
+      },
       getAdapter: () => ({
         review: async (prompt, options) => {
           reviewArgs = { prompt, options };
@@ -494,6 +515,10 @@ describe("review", () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
 
+    assert.deepEqual(buildPromptArgs.context, {
+      useProjectContext: true,
+      projectPath: "/configured/repo",
+    });
     assert.equal(reviewArgs.options.projectPath, "/configured/repo");
   });
 });

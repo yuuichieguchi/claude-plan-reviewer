@@ -96,16 +96,23 @@ describe("buildPrompt", () => {
     );
   });
 
-  it("tells the reviewer to inspect the project before judging the plan", () => {
+  it("keeps the legacy prompt by default", () => {
     const result = buildPrompt("my plan");
     assert.ok(
-      result.includes("inspect the relevant project files"),
-      "Output should instruct the reviewer to inspect the codebase first",
+      !result.includes("inspect the relevant project files"),
+      "Default output should not mention repository inspection",
     );
   });
 
-  it("includes the project path when project context is provided", () => {
-    const result = buildPrompt("my plan", "", { projectPath: "/repo/path" });
+  it("includes project-aware instructions when the feature is enabled", () => {
+    const result = buildPrompt("my plan", "", {
+      useProjectContext: true,
+      projectPath: "/repo/path",
+    });
+    assert.ok(
+      result.includes("inspect the relevant project files"),
+      "Output should instruct the reviewer to inspect the codebase when enabled",
+    );
     assert.ok(
       result.includes("## Project Context"),
       "Output should include the project context section",

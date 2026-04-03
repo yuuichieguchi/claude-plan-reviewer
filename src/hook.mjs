@@ -55,17 +55,24 @@ export async function processHook(input, deps) {
     }
 
     // 7. Build prompt and run review
-    const projectPath = config.projectPath || deps.cwd || "";
-    const prompt = deps.buildPrompt(plan.content, config.prompt, { projectPath });
+    const useProjectContext = config.useProjectContext === true;
+    const projectPath = useProjectContext ? (config.projectPath || deps.cwd || "") : "";
+    const prompt = useProjectContext
+      ? deps.buildPrompt(plan.content, config.prompt, { projectPath, useProjectContext: true })
+      : deps.buildPrompt(plan.content, config.prompt);
     const adapter = deps.getAdapter(config.adapter);
     deps.stderr.write(`[cpr] reviewing with ${config.adapter}...\n`);
-    if (projectPath) {
+    if (useProjectContext && projectPath) {
       deps.stderr.write(`[cpr] review projectPath=${projectPath}\n`);
     }
     deps.stderr.write(`\n\x1b[1;36m━━━ Claude Plan Reviewer ━━━ Reviewing with ${config.adapter}... ━━━\x1b[0m\n\n`);
-    const result = await adapter.review(prompt, { ...config[config.adapter], projectPath }, {
-      onData: (chunk) => deps.stderr.write(String(chunk)),
-    });
+    const result = await adapter.review(
+      prompt,
+      useProjectContext ? { ...config[config.adapter], projectPath } : config[config.adapter],
+      {
+        onData: (chunk) => deps.stderr.write(String(chunk)),
+      }
+    );
 
     deps.stderr.write(`\n\x1b[1;36m━━━ Review complete ━━━\x1b[0m\n\n`);
 

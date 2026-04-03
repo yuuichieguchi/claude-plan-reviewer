@@ -8,6 +8,7 @@ export const DEFAULT_CONFIG = {
   adapter: "codex",
   maxReviews: 2,
   prompt: "",
+  useProjectContext: false,
   projectPath: "",
   codex: {
     model: "",
@@ -43,6 +44,11 @@ export function loadConfig(configPath = CONFIG_PATH) {
     // Validate prompt: must be string
     if (typeof config.prompt !== "string") {
       config.prompt = DEFAULT_CONFIG.prompt;
+    }
+
+    // Validate useProjectContext: must be boolean
+    if (typeof config.useProjectContext !== "boolean") {
+      config.useProjectContext = DEFAULT_CONFIG.useProjectContext;
     }
 
     // Validate projectPath: must be string

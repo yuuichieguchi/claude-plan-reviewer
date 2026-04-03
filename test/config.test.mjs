@@ -66,6 +66,10 @@ describe("DEFAULT_CONFIG", () => {
     assert.equal(DEFAULT_CONFIG.prompt, "");
   });
 
+  it("should have useProjectContext as false", () => {
+    assert.equal(DEFAULT_CONFIG.useProjectContext, false);
+  });
+
   it("should have projectPath as empty string", () => {
     assert.equal(DEFAULT_CONFIG.projectPath, "");
   });
@@ -112,6 +116,7 @@ describe("loadConfig", () => {
       adapter: "codex",
       maxReviews: 2,
       prompt: "",
+      useProjectContext: false,
       projectPath: "",
       codex: {
         model: "",
@@ -136,6 +141,7 @@ describe("loadConfig", () => {
 
     // Default values preserved
     assert.equal(config.maxReviews, 2);
+    assert.equal(config.useProjectContext, false);
     assert.equal(config.projectPath, "");
     assert.deepEqual(config.codex, { model: "", sandbox: "read-only", timeout: 120000 });
     assert.deepEqual(config.gemini, { model: "" });
@@ -168,6 +174,7 @@ describe("loadConfig", () => {
       adapter: "gemini",
       maxReviews: 5,
       prompt: "Review carefully.",
+      useProjectContext: true,
       projectPath: "/repo/path",
       codex: {
         model: "o3",
@@ -214,6 +221,12 @@ describe("loadConfig", () => {
     fs.writeFileSync(tmpConfigPath, JSON.stringify({ prompt: 42 }));
     const config = loadConfig(tmpConfigPath);
     assert.equal(config.prompt, DEFAULT_CONFIG.prompt);
+  });
+
+  it("should fall back to default useProjectContext when useProjectContext is not a boolean", () => {
+    fs.writeFileSync(tmpConfigPath, JSON.stringify({ useProjectContext: "yes" }));
+    const config = loadConfig(tmpConfigPath);
+    assert.equal(config.useProjectContext, DEFAULT_CONFIG.useProjectContext);
   });
 
   it("should fall back to default projectPath when projectPath is not a string", () => {
@@ -293,6 +306,7 @@ describe("saveConfig", () => {
       adapter: "codex",
       maxReviews: 3,
       prompt: "save-test",
+      useProjectContext: true,
       projectPath: "/repo/path",
       codex: { model: "", sandbox: "read-only", timeout: 120000 },
       gemini: { model: "" },
@@ -343,6 +357,7 @@ describe("saveConfig", () => {
       adapter: "gemini",
       maxReviews: 4,
       prompt: "Be thorough.",
+      useProjectContext: true,
       projectPath: "/repo/path",
       codex: {
         model: "o3",

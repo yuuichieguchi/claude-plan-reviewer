@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const VALID_TOP_LEVEL_KEYS = new Set(["adapter", "maxReviews", "prompt", "projectPath"]);
+const VALID_TOP_LEVEL_KEYS = new Set(["adapter", "maxReviews", "prompt", "useProjectContext", "projectPath"]);
 const VALID_NESTED_KEYS = Object.create(null);
 VALID_NESTED_KEYS.codex = new Set(["model", "sandbox", "timeout"]);
 VALID_NESTED_KEYS.gemini = new Set(["model"]);
@@ -118,15 +118,21 @@ export async function main(args, deps) {
         break;
       }
       const config = deps.loadConfig();
-      const projectPath = config.projectPath || deps.cwd || process.cwd();
-      const prompt = deps.buildPrompt(content, config.prompt, { projectPath });
+      const useProjectContext = config.useProjectContext === true;
+      const projectPath = useProjectContext ? (config.projectPath || deps.cwd || process.cwd()) : "";
+      const prompt = useProjectContext
+        ? deps.buildPrompt(content, config.prompt, { projectPath, useProjectContext: true })
+        : deps.buildPrompt(content, config.prompt);
       const adapter = deps.getAdapter(config.adapter);
       try {
         deps.stdout.write(`Reviewing with ${config.adapter}...\n`);
-        if (projectPath) {
+        if (useProjectContext && projectPath) {
           deps.stdout.write(`Project: ${projectPath}\n`);
         }
-        const result = await adapter.review(prompt, { ...config[config.adapter], projectPath });
+        const result = await adapter.review(
+          prompt,
+          useProjectContext ? { ...config[config.adapter], projectPath } : config[config.adapter]
+        );
         deps.stdout.write("\n" + result + "\n");
       } catch (err) {
         deps.stderr.write(`Error: Review failed: ${err.message}\n`);

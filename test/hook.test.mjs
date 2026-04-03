@@ -52,6 +52,7 @@ function createDeps(overrides = {}) {
       adapter: 'codex',
       maxReviews: 2,
       prompt: '',
+      useProjectContext: false,
       projectPath: '',
       codex: { model: '', sandbox: 'read-only', timeout: 120000 },
     }),
@@ -129,7 +130,7 @@ describe('processHook', () => {
     assert.notEqual(buildPromptArgs, null, 'buildPrompt should have been called');
     assert.equal(buildPromptArgs.content, '# Plan\nDo stuff');
     assert.equal(buildPromptArgs.custom, '');
-    assert.deepEqual(buildPromptArgs.context, { projectPath: '/tmp/project' });
+    assert.equal(buildPromptArgs.context, undefined);
   });
 
   it('calls getAdapter with config.adapter name', async () => {
@@ -165,20 +166,25 @@ describe('processHook', () => {
       model: '',
       sandbox: 'read-only',
       timeout: 120000,
-      projectPath: '/tmp/project',
     });
   });
 
-  it('prefers config.projectPath over cwd when provided', async () => {
+  it('passes project context when the feature is enabled', async () => {
     let reviewArgs = null;
+    let buildPromptArgs = null;
     const deps = createDeps({
       loadConfig: () => ({
         adapter: 'codex',
         maxReviews: 2,
         prompt: '',
+        useProjectContext: true,
         projectPath: '/configured/repo',
         codex: { model: '', sandbox: 'read-only', timeout: 120000 },
       }),
+      buildPrompt: (content, custom, context) => {
+        buildPromptArgs = { content, custom, context };
+        return `Review: ${content}`;
+      },
       getAdapter: () => ({
         review: async (prompt, options) => {
           reviewArgs = { prompt, options };
@@ -189,6 +195,10 @@ describe('processHook', () => {
 
     await processHook(HOOK_INPUT, deps);
 
+    assert.deepEqual(buildPromptArgs.context, {
+      useProjectContext: true,
+      projectPath: '/configured/repo',
+    });
     assert.equal(reviewArgs.options.projectPath, '/configured/repo');
   });
 

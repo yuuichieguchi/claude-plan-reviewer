@@ -190,7 +190,7 @@ describe("codex adapter", () => {
     assert.equal(args[sandboxIndex + 1], "network");
   });
 
-  it("passes projectPath via -C and spawn cwd when provided", async () => {
+  it("passes projectPath via --cd and spawn cwd when provided", async () => {
     const mockSpawn = createMockSpawn({ stdout: "ok", code: 0 });
 
     await review(
@@ -200,7 +200,7 @@ describe("codex adapter", () => {
     );
 
     const { args, options } = mockSpawn.calls[0];
-    assert.deepEqual(args.slice(0, 3), ["-C", "/repo/path", "exec"]);
+    assert.deepEqual(args.slice(0, 3), ["--cd", "/repo/path", "exec"]);
     assert.equal(options.cwd, "/repo/path");
   });
 

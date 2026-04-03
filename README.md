@@ -55,6 +55,9 @@ claude-plan-reviewer config set adapter gemini
 # Change max reviews per session
 claude-plan-reviewer config set maxReviews 3
 
+# Enable project-aware review
+claude-plan-reviewer config set useProjectContext true
+
 # Pin the project directory that the reviewer should inspect
 claude-plan-reviewer config set projectPath /path/to/repo
 
@@ -74,6 +77,7 @@ claude-plan-reviewer config set gemini.model gemini-2.5-pro
   "adapter": "codex",
   "maxReviews": 2,
   "prompt": "",
+  "useProjectContext": false,
   "projectPath": "",
   "codex": {
     "model": "",
@@ -91,6 +95,7 @@ claude-plan-reviewer config set gemini.model gemini-2.5-pro
 | `adapter` | Reviewer to use (`codex` or `gemini`) | `codex` |
 | `maxReviews` | Max reviews per session | `2` |
 | `prompt` | Additional review instructions | `""` |
+| `useProjectContext` | Enable project-aware review; when `false`, use the legacy prompt and do not pass project directory context | `false` |
 | `projectPath` | Project root to inspect before reviewing; empty means use the current working directory | `""` |
 | `codex.model` | Codex CLI model | `""` (default) |
 | `codex.sandbox` | Codex sandbox mode | `read-only` |
@@ -114,7 +119,7 @@ claude-plan-reviewer config set gemini.model gemini-2.5-pro
 claude-plan-reviewer review ~/.claude/plans/my-plan.md
 ```
 
-If `projectPath` is empty, manual review uses the directory you run the command from as the project root. Codex uses `codex -C <projectPath> ...`. Gemini does not expose a separate working-directory flag, so the reviewer process is started with its current working directory set to `projectPath`, which is equivalent to `cd` into that directory before running `gemini`.
+By default, review runs in the legacy mode: no project directory is passed and the original prompt is used. When `useProjectContext` is `true`, `projectPath` controls which repository the reviewer inspects. If `projectPath` is empty, manual review uses the directory you run the command from as the project root. Codex uses `codex --cd <projectPath> ...`. Gemini does not expose a separate working-directory flag, so the reviewer process is started with its current working directory set to `projectPath`, which is equivalent to `cd` into that directory before running `gemini`.
 
 ## Prerequisites
 
