@@ -1,5 +1,19 @@
 import { spawn as defaultSpawn } from "node:child_process";
 
+function getSpawnSpec(args, platform = process.platform) {
+  if (platform === "win32") {
+    return {
+      command: process.env.ComSpec || "cmd.exe",
+      args: ["/d", "/s", "/c", "codex", ...args],
+    };
+  }
+
+  return {
+    command: "codex",
+    args,
+  };
+}
+
 /**
  * Runs the Codex CLI to review a plan.
  *
@@ -14,19 +28,32 @@ import { spawn as defaultSpawn } from "node:child_process";
  * @returns {Promise<string>} The review text (trimmed).
  */
 export async function review(prompt, options = {}, deps = {}) {
-  const { spawn = defaultSpawn, onData = () => {} } = deps;
+  const { spawn = defaultSpawn, onData = () => {}, platform = process.platform } = deps;
   const { model = "", sandbox = "read-only", timeout = 120000 } = options;
-
-  const args = ["exec", prompt, "--sandbox", sandbox, "--full-auto", "--skip-git-repo-check"];
+  const useStdinPrompt = platform === "win32";
+  const args = [
+    "exec",
+    ...(useStdinPrompt ? [] : [prompt]),
+    "--sandbox",
+    sandbox,
+    "--full-auto",
+    "--skip-git-repo-check",
+  ];
   if (model) {
     args.push("--model", model);
   }
+  const { command, args: spawnArgs } = getSpawnSpec(args, platform);
 
   return new Promise((resolve, reject) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
-
-    const child = spawn("codex", args, { signal: controller.signal });
+    const child = spawn(command, spawnArgs, {
+      signal: controller.signal,
+    });
+    if (useStdinPrompt) {
+      child.stdin?.write(prompt);
+    }
+    child.stdin?.end();
 
     let stdout = "";
     let stderr = "";
@@ -62,6 +89,15 @@ export async function review(prompt, options = {}, deps = {}) {
     child.on("error", (err) => {
       if (err.name === "AbortError") {
         settle(reject, new Error("Codex review timed out"));
+        return;
+      }
+      if (err.code === "ENOENT") {
+        settle(
+          reject,
+          new Error(
+            `Codex CLI not found. Make sure Codex is installed and available in PATH.`
+          )
+        );
         return;
       }
       settle(reject, new Error(`Codex review failed: ${err.message}`));

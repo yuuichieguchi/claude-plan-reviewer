@@ -11,6 +11,7 @@ export const DEFAULT_CONFIG = {
   codex: {
     model: "",
     sandbox: "read-only",
+    timeout: 120000,
   },
   gemini: {
     model: "",
@@ -57,6 +58,12 @@ export function loadConfig(configPath = CONFIG_PATH) {
       }
       if (typeof config.codex.sandbox !== "string") {
         config.codex.sandbox = DEFAULT_CONFIG.codex.sandbox;
+      }
+      if (
+        !Number.isInteger(config.codex.timeout) ||
+        config.codex.timeout <= 0
+      ) {
+        config.codex.timeout = DEFAULT_CONFIG.codex.timeout;
       }
     }
 

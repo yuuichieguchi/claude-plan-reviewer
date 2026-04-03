@@ -42,7 +42,7 @@ function createDeps(overrides = {}) {
       adapter: "codex",
       maxReviews: 2,
       prompt: "",
-      codex: { model: "", sandbox: "read-only" },
+      codex: { model: "", sandbox: "read-only", timeout: 120000 },
       gemini: { model: "" },
     }),
     saveConfig: () => {},
@@ -235,7 +235,7 @@ describe("config show", () => {
     assert.equal(parsed.adapter, "codex");
     assert.equal(parsed.maxReviews, 2);
     assert.equal(parsed.prompt, "");
-    assert.deepEqual(parsed.codex, { model: "", sandbox: "read-only" });
+    assert.deepEqual(parsed.codex, { model: "", sandbox: "read-only", timeout: 120000 });
     assert.deepEqual(parsed.gemini, { model: "" });
   });
 });
@@ -285,6 +285,21 @@ describe("config set", () => {
 
     assert.notEqual(savedConfig, null, "saveConfig should have been called");
     assert.equal(savedConfig.codex.model, "o3");
+  });
+
+  it("config set codex.timeout 300000 sets nested numeric key", async () => {
+    let savedConfig = null;
+    const deps = createDeps({
+      saveConfig: (config) => {
+        savedConfig = config;
+      },
+    });
+
+    await main(["config", "set", "codex.timeout", "300000"], deps);
+
+    assert.notEqual(savedConfig, null, "saveConfig should have been called");
+    assert.equal(savedConfig.codex.timeout, 300000);
+    assert.equal(typeof savedConfig.codex.timeout, "number");
   });
 
   it("config set with missing key/value prints error and exits 1", async () => {
